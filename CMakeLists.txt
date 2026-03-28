@@ -3,10 +3,11 @@ project(AuthService)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_subdirectory(libs/Bcrypt.cpp)
-add_subdirectory(libs/redis-plus-plus)
-add_subdirectory(libs/googletest)
-include_directories(/path/to/redis-plus-plus)
+#add_subdirectory(libs/Bcrypt.cpp)
+#add_subdirectory(libs/redis-plus-plus)
+# add_subdirectory(libs/googletest)
+#include_directories(/path/to/redis-plus-plus)
+include_directories(/usr/local/include/sw/redis++/)
 
 find_package(Drogon REQUIRED)
 find_package(PostgreSQL REQUIRED)
@@ -42,7 +43,13 @@ find_library(HIREDIS_LIB hiredis)
 # <------------ add redis-plus-plus dependency -------------->
 # NOTE: this should be *sw* NOT *redis++*
 find_path(REDIS_PLUS_PLUS_HEADER sw)
-find_library(REDIS_PLUS_PLUS_LIB redis++)
+#find_library(REDIS_PLUS_PLUS_LIB redis++)
+# 显式指定只使用系统库
+find_library(REDIS_PLUS_PLUS_LIB
+        NAMES redis++
+        PATHS /usr/local/lib /usr/lib
+        NO_DEFAULT_PATH  # 不搜索其他路径
+)
 
 target_link_libraries(my_drogon_app
         PRIVATE Drogon::Drogon
@@ -51,7 +58,7 @@ target_link_libraries(my_drogon_app
         bcrypt
         ${HIREDIS_LIB}
         PRIVATE redis++ hiredis
-        PUBLIC ${REDIS_PLUS_PLUS_HEADER}
+        #PUBLIC ${REDIS_PLUS_PLUS_HEADER}
         ${REDIS_PLUS_PLUS_LIB}
 )
 
