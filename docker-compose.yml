@@ -2,7 +2,7 @@ name: my-dork
 
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:15 #postgres:latest
     container_name: postgres_container_compose_test
     environment:
       POSTGRES_USER: postgres
@@ -11,8 +11,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d/
+      - /home/l/drogon_dev/drogon-auth/migrations:/docker-entrypoint-initdb.d/
+      - /data/usershare/PG/pgdata-drogon-auth:/var/lib/postgresql/data
+      #- pgdata:/var/lib/postgresql/data
+      #- ./migrations:/docker-entrypoint-initdb.d/
 
-volumes:
-  pgdata:
+#volumes:
+#  pgdata:

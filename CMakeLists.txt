@@ -2,20 +2,33 @@ cmake_minimum_required(VERSION 3.30)
 project(AuthService)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-#add_subdirectory(libs/Bcrypt.cpp)
-#add_subdirectory(libs/redis-plus-plus)
-# add_subdirectory(libs/googletest)
-#include_directories(/path/to/redis-plus-plus)
-include_directories(/usr/local/include/sw/redis++/)
+# ========== 输出目录统一配置 ==========
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/runtime)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# ========== 子模块 ==========
+add_subdirectory(libs/Bcrypt.cpp)
+add_subdirectory(libs/redis-plus-plus)
+add_subdirectory(libs/nlohmann_json)
+
+# ========== 依赖查找 ==========
 find_package(Drogon REQUIRED)
 find_package(PostgreSQL REQUIRED)
-find_package(nlohmann_json REQUIRED)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/jwt-cpp/include)
+# ========== 头文件包含 ==========
+include_directories(
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/jwt-cpp/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/redis-plus-plus
+)
 
-add_executable(my_drogon_app
+# ========== 可执行文件 ==========
+set(EXECUTABLE_NAME my_drogon_app)
+
+add_executable(${EXECUTABLE_NAME}
         src/main.cpp
         src/models/user.hpp
         src/dto/userDtro.hpp
@@ -31,53 +44,55 @@ add_executable(my_drogon_app
         src/utils/jwt/jwtToken.hpp
         src/middlewares/TokenExtractionMiddleware.hpp
         src/middlewares/ValidateTokensMiddleware.hpp
-        "src/middlewares/ValidatePasswordMiddleware .hpp"
-        "src/middlewares/ValidateEmailAndUsernameMiddleware .hpp"
+        src/middlewares/ValidatePasswordMiddleware.hpp
+        src/middlewares/ValidateEmailAndUsernameMiddleware.hpp
 )
 
-# <------------ add hiredis dependency --------------->
+# ========== hiredis + redis++ 依赖 ==========
 find_path(HIREDIS_HEADER hiredis)
-target_include_directories(my_drogon_app PUBLIC ${HIREDIS_HEADER})
-
+target_include_directories(${EXECUTABLE_NAME} PUBLIC ${HIREDIS_HEADER})
 find_library(HIREDIS_LIB hiredis)
-# <------------ add redis-plus-plus dependency -------------->
-# NOTE: this should be *sw* NOT *redis++*
-find_path(REDIS_PLUS_PLUS_HEADER sw)
-#find_library(REDIS_PLUS_PLUS_LIB redis++)
-# 显式指定只使用系统库
-find_library(REDIS_PLUS_PLUS_LIB
-        NAMES redis++
-        PATHS /usr/local/lib /usr/lib
-        NO_DEFAULT_PATH  # 不搜索其他路径
-)
 
-target_link_libraries(my_drogon_app
-        PRIVATE Drogon::Drogon
+# ========== 链接库 ==========
+target_link_libraries(${EXECUTABLE_NAME}
+        PRIVATE
+        Drogon::Drogon
         nlohmann_json::nlohmann_json
         PostgreSQL::PostgreSQL
         bcrypt
         ${HIREDIS_LIB}
-        PRIVATE redis++ hiredis
-        #PUBLIC ${REDIS_PLUS_PLUS_HEADER}
-        ${REDIS_PLUS_PLUS_LIB}
+        redis++
 )
 
+# ========== ✅ 核心修复：RPATH 绝对正确 ==========
+set_target_properties(${EXECUTABLE_NAME} PROPERTIES
+        # 关键：让运行时搜索 ./runtime 目录
+        INSTALL_RPATH "\$ORIGIN/runtime"
+        BUILD_RPATH "\$ORIGIN/runtime"
+
+        # 强制启用 ORIGIN 相对路径
+        BUILD_RPATH_USE_ORIGIN ON
+        SKIP_BUILD_RPATH OFF
+        NO_BUILD_RPATH OFF
+        # 清除系统默认 RPATH，避免冲突
+        CMAKE_BUILD_WITH_INSTALL_RPATH ON
+)
+
+# ========== Debug 宏 ==========
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(my_drogon_app PRIVATE DEBUG)
+    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE DEBUG)
 endif()
 
-# Тесты
-#add_executable(my_tests
-#        tests/serviseAuth.cpp
-#)
-#
-#target_link_libraries(my_tests
-#        PRIVATE
-#        GTest::GTest
-#        GTest::Main
-#        ${CMAKE_THREAD_LIBS_INIT}
-#)
-#
-#if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-#    target_compile_definitions(my_drogon_app PRIVATE DEBUG)
-#endif()
+# ========== 拷贝配置文件 ==========
+set(CONFIG_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/src/config.json")
+if(NOT EXISTS ${CONFIG_FILE})
+    message(FATAL_ERROR "配置文件不存在: ${CONFIG_FILE}")
+endif()
+
+add_custom_command(TARGET ${EXECUTABLE_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CONFIG_FILE}"
+        "$<TARGET_FILE_DIR:${EXECUTABLE_NAME}>"
+        COMMENT "拷贝配置文件到目标目录"
+        VERBATIM
+)

@@ -3,7 +3,7 @@
     {
       "name": "default",
       "rdbms": "postgresql",
-      "host": "localhost",
+      "host": "postgres_prod",
       "port": 5432,
       "dbname": "postgres",
       "user": "postgres",
@@ -18,8 +18,8 @@
   },
   "listeners": [
     {
-      "address": "127.0.0.1",
-      "port": 3000,
+      "address": "0.0.0.0",
+      "port": 3001,
       "https": false,
       "cert": "",
       "key": ""
