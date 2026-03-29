@@ -21,7 +21,7 @@ else
 fi
 
 echo "Installing bcrypt-cpp..."
-if [ ! -d "Bcrypt" ]; then
+if [ ! -d "Bcrypt.cpp" ]; then
   git clone --depth 1 https://github.com/hilch/Bcrypt.cpp.git
   #mv Bcrypt.cpp Bcrypt
 else

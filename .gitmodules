@@ -1,3 +1,24 @@
 [submodule "libs/nlohmann_json"]
 	path = libs/nlohmann_json
 	url = https://github.com/nlohmann/json.git
+
+[submodule "libs/jwt-cpp"]
+	path = libs/jwt-cpp
+	url = https://github.com/Thalhammer/jwt-cpp.git
+
+# [submodule "libs/googletest"]
+# 	path = libs/googletest
+# 	url = https://github.com/google/googletest.git
+#
+# [submodule "libs/hiredis"]
+# 	path = libs/hiredis
+# 	url = https://github.com/redis/hiredis.git
+
+[submodule "libs/Bcrypt.cpp"]
+	path = libs/Bcrypt.cpp
+	url = https://github.com/hilch/Bcrypt.cpp.git
+
+
+[submodule "libs/redis-plus-plus"]
+	path = libs/redis-plus-plus
+	url = https://github.com/sewenew/redis-plus-plus.git
