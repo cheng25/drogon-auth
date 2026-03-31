@@ -6,29 +6,33 @@
 
 using namespace drogon;
 
-class ValidateEmailAndUsernameMiddleware : public HttpMiddleware<ValidateEmailAndUsernameMiddleware> {
+/**
+ * @brief 此中间件会验证请求体中的电子邮件和用户名字段。
+ *
+ */
+class ValidateEmailAndUsernameMiddleware final : public HttpMiddleware<ValidateEmailAndUsernameMiddleware> {
 public:
-    ValidateEmailAndUsernameMiddleware() {};
+    ValidateEmailAndUsernameMiddleware() {};// 不要使用 = default;ERROR middleware not found - MiddlewaresFunction.cc:164 NOLINT(*-use-equals-default)
 
     void invoke(const HttpRequestPtr &req,
                 MiddlewareNextCallback &&nextCb,
                 MiddlewareCallback &&mcb) override {
-        auto attributes = req->getAttributes();
-        auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
+        const auto attributes = req->getAttributes();
+        const auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
 
         try {
             if (!body->isMember("username") || !body->isMember("email")) {
                 throw std::runtime_error("Required fields (username or email) are missing");
             }
-            std::string email = (*body)["email"].asString();
-            std::regex emailRegex("^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$");
+            const std::string email = (*body)["email"].asString();
 
-            if (!std::regex_match(email, emailRegex)) {
+            if (const std::regex emailRegex("^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$");
+                !std::regex_match(email, emailRegex)) {
                 throw std::runtime_error("Invalid email format");
             }
-            std::string username = (*body)["username"].asString();
 
-            if (username.empty()) {
+            if (const std::string username = (*body)["username"].asString();
+                username.empty()) {
                 throw std::runtime_error("Username cannot be empty");
             }
         } catch (const std::exception &e) {

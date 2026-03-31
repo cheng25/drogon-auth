@@ -6,24 +6,26 @@
 
 using namespace drogon;
 
+/**
+ *  @brief 密码验证中间件
+ */
 class ValidatePasswordMiddleware : public HttpMiddleware<ValidatePasswordMiddleware> {
 public:
-    ValidatePasswordMiddleware() {};
+    ValidatePasswordMiddleware() {}; // 不要使用 = default;ERROR middleware not found - MiddlewaresFunction.cc:164 NOLINT(*-use-equals-default)
 
     void invoke(const HttpRequestPtr &req,
                 MiddlewareNextCallback &&nextCb,
                 MiddlewareCallback &&mcb) override {
-        auto attributes = req->getAttributes();
-        auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
+        const auto attributes = req->getAttributes();
+        const auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
 
         try {
             if (!body->isMember("password")) {
                 throw std::runtime_error("Required field password is missing");
             }
 
-            std::string password = (*body)["password"].asString();
-
-            if (password.length() < 8) {
+            if (const std::string password = (*body)["password"].asString();
+                password.length() < 8) {
                 throw std::runtime_error("Password must be at least 8 characters long");
             }
         } catch (const std::exception &e) {

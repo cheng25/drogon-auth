@@ -7,22 +7,22 @@
 void authController::signUp(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
     std::clog << "log authController::signUp" << std::endl;
     try {
-        auto body = req->getJsonObject();
-        user user((*body)["username"].asString(), bcrypt::generateHash((*body)["password"].asString()),
+        const auto body = req->getJsonObject();
+        const user user((*body)["username"].asString(), bcrypt::generateHash((*body)["password"].asString()),
                   (*body)["email"].asString());
 
         AuthService::registration(user);
 
         Json::Value ret;
         ret["message"] = "user registered successfully";
-        auto resp = HttpResponse::newHttpJsonResponse(ret);
+        const auto resp = HttpResponse::newHttpJsonResponse(ret);
         resp->setStatusCode(drogon::HttpStatusCode::k201Created);
         callback(resp);
     } catch (const std::exception &e) {
         std::clog << "log "<< e.what() << std::endl;
         Json::Value ret;
         ret["error"] = e.what();
-        auto resp = drogon::HttpResponse::newHttpJsonResponse(ret);
+        const auto resp = drogon::HttpResponse::newHttpJsonResponse(ret);
         resp->setStatusCode(drogon::k400BadRequest);
         callback(resp);
     }
@@ -35,9 +35,9 @@ void authController::signIn(const HttpRequestPtr &req, std::function<void(const 
         user user((*body)["username"].asString(), (*body)["password"].asString(),
                   (*body)["email"].asString());
 
-        auto userData = AuthService::login(user);
+        const auto userData = AuthService::login(user);
 
-        auto jwt = userData.TokenPair;
+        const auto jwt = userData.TokenPair;
 
         Json::Value ret;
         ret["message"] = "The user has successfully logged into the account";
@@ -47,8 +47,8 @@ void authController::signIn(const HttpRequestPtr &req, std::function<void(const 
         resp->setStatusCode(drogon::HttpStatusCode::k200OK);
         Cookie cookie("refreshToken", jwt.refreshToken);
         cookie.setPath("/");
-        cookie.setHttpOnly(true);
-        cookie.setSecure(true);
+        cookie.setHttpOnly(true);// only accessible by server 只能通过服务器访问
+        cookie.setSecure(true); // 开启安全
         resp->addCookie(cookie);
         callback(resp);
     } catch (const std::exception &e) {
@@ -133,12 +133,21 @@ authController::changePassword(const HttpRequestPtr &req, std::function<void(con
     std::clog << "log authController::changePassword" << std::endl;
 
     try {
-        auto attributes = req->getAttributes();
-        auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
-        std::string hashPassword = bcrypt::generateHash((*body)["password"].asString());
-        std::string accessToken = (*body)["accessToken"].asString();
-        auto decodedToken = jwt::decode(accessToken);
-        AuthService::Id userId = std::stoi(decodedToken.get_payload_claim("sub").as_string());
+        const auto attributes = req->getAttributes();
+        const auto body = attributes->get<std::shared_ptr<Json::Value>>("body");
+        const std::string hashPassword = bcrypt::generateHash((*body)["password"].asString());
+
+        const std::string accessToken = (*body)["accessToken"].asString();
+        // 或者
+        //const std::string accessToken = attributes->get<std::string>("accessToken");
+
+        const auto decodedToken = jwt::decode(accessToken);
+#if 0
+        const AuthService::Id userId = std::stoi(decodedToken.get_payload_claim("sub").as_string());
+#else
+        const AuthService::Id userId = std::stoi(decodedToken.get_subject());
+#endif
+
         AuthService::changePassword(userId, hashPassword);
         Json::Value ret;
         ret["message"] = "New password set successfully";

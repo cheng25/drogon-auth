@@ -1,0 +1,242 @@
+openapi: 3.0.0
+info:
+  title: 认证接口服务
+  description: 用户认证相关接口
+  version: 1.0.0
+paths:
+  /sign-up:
+    post:
+      summary: 新用户注册
+      operationId: signUp
+      tags:
+        - 认证授权
+      requestBody:
+        description: 新用户注册所需数据
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  description: 用户名
+                email:
+                  type: string
+                  format: email
+                  description: 用户电子邮箱
+                password:
+                  type: string
+                  description: 用户密码
+      responses:
+        '201':
+          description: 用户注册成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "user registered successfully"
+        '400':
+          description: 请求参数非法
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "必填字段(用户名或邮箱)缺失"
+
+  /sign-in:
+    post:
+      summary: 用户登录
+      operationId: signIn
+      tags:
+        - 认证授权
+      requestBody:
+        description: 登录请求数据
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: 用户名
+                password:
+                  type: string
+                  description: 用户密码
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "The user has successfully logged into the account"
+                  accessToken:
+                    type: string
+                    description: 全新访问令牌
+                  userId:
+                    type: integer
+                    description: 用户唯一标识ID
+        '400':
+          description: 登录信息错误
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "用户名或密码无效"
+
+  /logout:
+    post:
+      summary: 用户登出
+      operationId: logout
+      tags:
+        - 认证授权
+      responses:
+        '200':
+          description: 用户登出成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "The user has successfully logged out of the account."
+                  logout:
+                    type: string
+                    example: "ok"
+        '401':
+          description: 令牌无效
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "访问令牌不合法"
+
+  /getNewAccessToken:
+    post:
+      summary: 刷新获取新访问令牌
+      operationId: getNewAccessToken
+      tags:
+        - 认证授权
+      requestBody:
+        description: 凭旧令牌换取新访问令牌
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accessToken
+                - refreshToken
+              properties:
+                accessToken:
+                  type: string
+                  description: 当前旧访问令牌
+                refreshToken:
+                  type: string
+                  description: 刷新令牌
+      responses:
+        '200':
+          description: 新访问令牌获取成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "The user has successfully updated the access token"
+                  accessToken:
+                    type: string
+                    description: 全新访问令牌
+                  userId:
+                    type: integer
+                    description: 用户唯一标识ID
+        '400':
+          description: 令牌校验失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "令牌无效"
+
+  /changePassword:
+    post:
+      summary: 修改用户密码
+      operationId: changePassword
+      tags:
+        - 认证授权
+      requestBody:
+        description: 修改密码所需参数
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+                - accessToken
+              properties:
+                password:
+                  type: string
+                  description: 新密码
+                accessToken:
+                  type: string
+                  description: 当前有效访问令牌
+      responses:
+        '200':
+          description: 密码修改成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "New password set successfully"
+        '400':
+          description: 密码修改异常失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "密码格式非法"
+
+components:
+  securitySchemes:
+    JWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  security:
+    - JWT: []

@@ -5,6 +5,7 @@
 #include "middlewares/ValidatePasswordMiddleware.hpp"
 #include "middlewares/ValidateRequestBodyMiddleware.hpp"
 #include "middlewares/ValidateTokensMiddleware.hpp"
+#include "middlewares/ValidateRefreshMiddleware.hpp"
 #include "controllers/authController.h"
 
 namespace repos {
@@ -21,7 +22,7 @@ int main() {
     std::clog << "log loadConfigFile" << std::endl;
     // 输出Redis连接状态
     auto result = repos::redisDbClient.ping();
-    std::clog << "log ping result: " << result << std::endl;
+    std::clog << "log Redis ping result: " << result << std::endl;
     if (result != "PONG") {
         std::clog << "log Redis connection failed" << std::endl;
     }else

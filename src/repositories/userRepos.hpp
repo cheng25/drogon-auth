@@ -23,7 +23,7 @@ public:
 
     void updatePassword(Id id, const std::string &password);
 
-    UserAuth getUserAuthData(const std::string &username, const std::string &email);
+    UserAuth getUserAuthData(const std::string &username, const std::string &email) const;
 
 private:
     DbClientType dbClient_;

@@ -7,12 +7,16 @@
 
 using namespace drogon;
 
-void validationFunc(const UserDto &) noexcept(false) {}
+inline void validationFunc(const UserDto &) noexcept(false) {}
 
+/**
+ *  @brief 中间件验证请求体body 的格式为 json 并 写入请求属性中
+ *
+ */
 class ValidateRequestBodyMiddleware : public HttpMiddleware<ValidateRequestBodyMiddleware> {
 public:
 
-    ValidateRequestBodyMiddleware() {};
+    ValidateRequestBodyMiddleware() {};// 不要使用 = default;ERROR middleware not found - MiddlewaresFunction.cc:164 NOLINT(*-use-equals-default)
 
     void invoke(const HttpRequestPtr &req,
                 MiddlewareNextCallback &&nextCb,
@@ -37,9 +41,9 @@ public:
             ret["error"] = e.what();
             auto resp = drogon::HttpResponse::newHttpJsonResponse(ret);
             resp->setStatusCode(drogon::k400BadRequest);
-            mcb(resp);
+            mcb(resp);// 短路请求
             return;
         }
-        nextCb(std::move(mcb));
+        nextCb(std::move(mcb));// 继续执行下一个中间件
     }
 };

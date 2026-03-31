@@ -17,13 +17,13 @@ namespace repos {
 
         Session() = delete;
 
-        Session(const JwtTokens &jwtTokens_) : jwtTokens_(jwtTokens_) {}
+        explicit Session(const JwtTokens &jwtTokens_) : jwtTokens_(jwtTokens_) {}
 
-        void upload(const user_id &);
+        void upload(const user_id &) const;
 
         const JwtTokens &get(const user_id &, const JwtTokens &jwtTokens);
 
-        void remove(const user_id &, const JwtTokens &jwtTokens);
+        void remove(const user_id &, const JwtTokens &jwtTokens) const;
 
     private:
         DbClientType &dbClient_ = redisDbClient;

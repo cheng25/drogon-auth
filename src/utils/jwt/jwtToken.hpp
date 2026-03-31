@@ -11,28 +11,29 @@ public:
         std::string refreshToken;
     };
 
-    JwtToken(const std::string &secretKey = "secretKey",
+    explicit JwtToken(const std::string &secretKey = "secretKey",
              size_t accessTokenLifetimeMinutes = 1800,
              size_t refreshTokenLifetimeDays = 30)
             : secretKey_(secretKey),
               accessTokenLifetime_(std::chrono::minutes(accessTokenLifetimeMinutes)),
               refreshTokenLifetime_(std::chrono::days(refreshTokenLifetimeDays)) {}
 
-    TokenPair createPair(const size_t &userId) {
+    TokenPair createPair(const size_t &userId) const {
         return createPair(std::to_string(userId));
     }
 
-    TokenPair createPair(const std::string &userId) {
-        auto now = std::chrono::system_clock::now();
-
-        std::string accessToken = jwt::create()
-                .set_issuer("Capy")
-                .set_subject(userId)
-                .set_issued_at(now)
-                .set_expires_at(now + accessTokenLifetime_)
-                .sign(jwt::algorithm::hs256{secretKey_});
-
-        std::string refreshToken = jwt::create()
+    [[nodiscard]] TokenPair createPair(const std::string &userId) const
+    {
+        const auto now = std::chrono::system_clock::now();
+        // Create access token 创建访问令牌
+        const std::string accessToken = jwt::create()
+                .set_issuer("Capy") // 令牌颁发者
+                .set_subject(userId) // 令牌主题
+                .set_issued_at(now) // 令牌创建时间
+                .set_expires_at(now + accessTokenLifetime_)// 令牌过期时间
+                .sign(jwt::algorithm::hs256{secretKey_});// 签名
+        // Create refresh token 创建刷新令牌
+        const std::string refreshToken = jwt::create()
                 .set_issuer("Capy")
                 .set_subject(userId)
                 .set_issued_at(now)
@@ -42,9 +43,9 @@ public:
         return {accessToken, refreshToken};
     }
 
-    bool validateToken(const std::string &token) const {
+    [[nodiscard]] bool validateToken(const std::string &token) const {
         try {
-            auto decodedToken = jwt::decode(token);
+            const auto decodedToken = jwt::decode(token);
 
             jwt::verify()
                     .allow_algorithm(jwt::algorithm::hs256{secretKey_})

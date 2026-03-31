@@ -35,6 +35,8 @@ add_executable(${EXECUTABLE_NAME}
         src/middlewares/ValidateRequestBodyMiddleware.hpp
         src/controllers/authController.cpp
         src/controllers/authController.h
+        src/controllers/api_v1_health.cc
+        src/controllers/api_v1_health.h
         src/repositories/userRepos.hpp
         src/repositories/userRepos.cpp
         src/services/serviceAuth.cpp
@@ -46,6 +48,7 @@ add_executable(${EXECUTABLE_NAME}
         src/middlewares/ValidateTokensMiddleware.hpp
         src/middlewares/ValidatePasswordMiddleware.hpp
         src/middlewares/ValidateEmailAndUsernameMiddleware.hpp
+        src/middlewares/ValidateRefreshMiddleware.hpp
 )
 
 # ========== hiredis + redis++ 依赖 ==========

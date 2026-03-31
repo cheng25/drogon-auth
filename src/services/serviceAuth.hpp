@@ -20,4 +20,7 @@ public:
     static JwtToken::TokenPair updateAccessToken(const UserData &);
 
     static void changePassword(Id, const std::string &);
+
+private:
+    static JwtToken::TokenPair createAccessToken(const int id_);
 };
