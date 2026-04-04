@@ -19,6 +19,7 @@ namespace repos {
 
         explicit Session(const JwtTokens &jwtTokens_) : jwtTokens_(jwtTokens_) {}
 
+        // 储入
         void upload(const user_id &) const;
 
         const JwtTokens &get(const user_id &, const JwtTokens &jwtTokens);

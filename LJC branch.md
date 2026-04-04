@@ -218,7 +218,7 @@ sequenceDiagram
     MW->>MW: ValidateEmailAndUsernameMiddleware → regex check
     MW->>MW: ValidatePasswordMiddleware → length ≥ 8
     MW->>CTL: Forward (attributes populated)
-    CTL->>CTL: Build UserDto → bcrypt::generateHash() → build user entity
+    CTL->>CTL: Build user → bcrypt::generateHash() → build user entity
     CTL->>SVC: AuthService::login(user)
     SVC->>UR: getUserAuthData(username, email)
     UR->>PG: SELECT Id, hashpassword FROM users WHERE ...
@@ -260,4 +260,405 @@ flowchart TD
     MW1 -.->|inserts| A1
     MW2 -.->|reads| A1
     MW3 -.->|reads| A1
+```
+## 架构概览：两大管道家族
+
+
+```mermaid
+flowchart TD
+    subgraph "认证管道 /sign-up  /sign-in"
+        A1["ValidateRequestBodyMiddleware \n 解析原始请求体 → JSON 属性"]
+        A2["ValidateEmailAndUsernameMiddleware \n 检查字段 + 正则邮箱"]
+        A3["ValidatePasswordMiddleware \n 检查密码 ≥ 8 个字符"]
+        A1 --> A2 --> A3 --> AC["控制器处理函数"]
+    end
+
+    subgraph "授权管道/logout /getNewAccessToken /changePassword"
+        B1["TokenExtractionMiddleware \n 提取令牌 → 属性"]
+        B2["ValidateTokensMiddleware \n JWT 验证 + Redis 交叉检查"]
+        B1 --> B2 --> BC["控制器处理函数"]
+    end
+
+    subgraph "混合管道 /changePassword"
+        C1["ValidateRequestBodyMiddleware"]
+        C2["ValidatePasswordMiddleware"]
+        C3["TokenExtractionMiddleware"]
+        C4["ValidateTokensMiddleware"]
+        C1 --> C2 --> C3 --> C4 --> CC["控制器处理函数"]
+    end
+```
+认证管道通过验证请求体的结构和内容来保护基于凭据的端点（`/sign-up`、`/sign-in`）。
+授权管道通过提取和验证 JWT 令牌来保护依赖于会话的端点（`/logout`、`/getNewAccessToken`）。
+`/changePassword` 路由独特地结合了这两个家族，它需要一个有效的请求体、符合要求的密码以及有效的会话令牌——这种模式将在下文详细探讨。
+
+## 中间件注册与路由绑定
+基于路由的绑定意味着**提取中间件充当了网关过滤器**：仅需识别用户身份的路由（如 `/logout`）可以跳过开销较大的 Redis 往返调用，
+而修改敏感状态的路由（如 `/changePassword` 或 `/getNewAccessToken`）则会获得完整的密码学 + 会话状态保证。
+
+```mermaid
+flowchart TD
+    subgraph Route Binding
+        R1["POST /logout"]
+        R2["POST /getNewAccessToken"]
+        R3["POST /changePassword"]
+    end
+
+    subgraph Middleware Pipeline
+        EX["TokenExtractionMiddleware<br/>Extracts & stores tokens"]
+        VAL["ValidateTokensMiddleware<br/>JWT sig + Redis session check"]
+        BODY["ValidateRequestBodyMiddleware<br/>& ValidatePasswordMiddleware"]
+    end
+
+    R1 --> EX
+    R2 --> EX --> VAL
+    R3 --> BODY --> EX --> VAL
+```
+
+令牌传输策略遵循分通道模型（split-channel model）：访问令牌在 JSON 请求体中传输，而刷新令牌则绑定到登录时设置的`HttpOnly`、`Secure Cookie`。
+这种分离是刻意为之——将访问令牌放在请求体而非请求头中，可以使其避开浏览器可访问的存储（避免 `Authorization` 请求头通过 CORS 预检请求泄露），
+而 `HttpOnly Cookie` 则能防止基于 JavaScript 的 XSS 攻击窃取刷新令牌。
+
+```mermaid
+flowchart TD
+    REQ["HTTP Request arrives"]
+    PARSE{"Parse JSON body?"}
+    PARSE_NO["400: Invalid JSON body"]
+    AT{"accessToken<br/>field present?"}
+    AT_NO["400: Missing field accessToken"]
+    RT{"refreshToken<br/>in cookies?"}
+    RT_NO["400: Missing refreshToken in cookies"]
+    STORE["Store both tokens<br/>in request attributes"]
+    NEXT["nextCb → next middleware"]
+
+    REQ --> PARSE
+    PARSE -- No --> PARSE_NO
+    PARSE -- Yes --> AT
+    AT -- No --> AT_NO
+    AT -- Yes --> RT
+    RT -- No --> RT_NO
+    RT -- Yes --> STORE
+    STORE --> NEXT
+
+    style PARSE_NO fill:#f66,color:#fff
+    style AT_NO fill:#f66,color:#fff
+    style RT_NO fill:#f66,color:#fff
+    style STORE fill:#6f6,color:#fff
+```
+
+
+## Redis 键方案
+`{userId}:{accessToken}` 意味着系统可以支持每个用户的多个并发会话。每个活跃会话作为单独的 Redis 条目存储，以唯一的访问令牌作为键。
+这种设计允许 `/logout` 仅使单个会话失效，而不会影响同一用户账号下的其他活跃会话。
+
+```mermaid
+flowchart TD
+    ATTR["Retrieve accessToken & refreshToken<br/>from request attributes"]
+    VAL_AT{"validateToken(accessToken)?"}
+    VAL_RT{"validateToken(refreshToken)?"}
+    ERR_RT["401: Refresh token is not valid"]
+    ERR_AT["401: Access token is not valid"]
+    DECODE["Decode accessToken → userId"]
+    REDIS["Redis lookup<br/>key: userId:accessToken"]
+    REDIS_FAIL["Redis returns null"]
+    COMPARE{"Stored accessToken<br/>== request accessToken?"}
+    MATCH_ERR["401: No such access token found"]
+    COMPARE_RT{"Stored refreshToken<br/>== request refreshToken?"}
+    MATCH_ERR_RT["401: Refresh token does not match stored session"]
+    NEXT["nextCb → controller handler"]
+
+    ATTR --> VAL_AT
+    VAL_AT -- Valid --> DECODE
+    VAL_AT -- Invalid --> VAL_RT
+    VAL_RT -- Invalid --> ERR_RT
+    VAL_RT -- Valid --> ERR_AT
+    DECODE --> REDIS
+    REDIS -- Not found --> REDIS_FAIL
+    REDIS -- Found --> COMPARE
+    COMPARE -- Mismatch --> MATCH_ERR
+    COMPARE -- Match --> COMPARE_RT
+    COMPARE_RT -- Mismatch --> MATCH_ERR_RT
+    COMPARE_RT -- Match --> NEXT
+
+    style ERR_RT fill:#f66,color:#fff
+    style ERR_AT fill:#f66,color:#fff
+    style REDIS_FAIL fill:#f66,color:#fff
+    style MATCH_ERR fill:#f66,color:#fff
+    style MATCH_ERR_RT fill:#f66,color:#fff
+    style NEXT fill:#6f6,color:#fff
+```
+
+## 端到端流程：从登录到验证
+下图追踪了从 `/sign-in` 处颁发令牌，到在受保护端点（如 `/getNewAccessToken`）进行提取和验证的完整生命周期：
+
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AC as authController
+    participant TEX as TokenExtractionMiddleware
+    participant VAL as ValidateTokensMiddleware/ValidateRefreshMiddleware
+    participant JWT as JwtToken
+    participant R as Redis
+    participant AS as AuthService
+
+    Note over C,AS: Phase A — Token Issuance (POST /sign-in)
+    C->>AC: POST /sign-in {username, email, password}
+    AC->>AS: login(user)
+    AS->>JWT: createPair(userId)
+    JWT-->>AS: {accessToken, refreshToken}
+    AS->>R: SET {userId}:{accessToken} → JSON{both tokens}
+    AS-->>AC: UserData{TokenPair, id}
+    AC-->>C: 200 OK + JSON{accessToken}<br/>Set-Cookie: refreshToken (HttpOnly, Secure)
+
+    Note over C,AS: Phase B — Protected Request (POST /getNewAccessToken)
+    C->>TEX: POST /getNewAccessToken {accessToken}<br/>Cookie: refreshToken
+    TEX->>TEX: Validate JSON body
+    TEX->>TEX: Extract accessToken from body
+    TEX->>TEX: Extract refreshToken from cookies
+    TEX->>TEX: Store both in request attributes
+    TEX->>VAL: nextCb(mcb)
+
+    VAL->>JWT: validateToken(refreshToken)
+    alt Refresh token valid
+        VAL->>JWT: Decode refreshToken → userId
+        VAL->>R: GET {userId}:{accessToken}
+        R-->>VAL: JSON{stored tokens}
+        VAL->>VAL: Compare stored.refreshToken == request.refreshToken
+        VAL->>AC: nextCb(mcb) — tokens verified
+
+        AC->>JWT: Decode refreshToken → userId
+        AC->>AS: AuthService::updateAccessToken( AuthService::UserData { JwtToken::TokenPair{accessToken, refreshToken}, userId } )
+        AS->>R: DEL {userId}:{oldAccessToken}
+        AS->>JWT: ccessToken(userId)
+        JWT-->>AS: JwtToken::TokenPair{newAccessToken,newRefreshToken}
+        AS->>R: SET {userId}:{newAccessToken} → JSON{tokens}
+        AS-->>AC: JwtToken::TokenPair{newAccessToken,newRefreshToken}
+        AC-->>C: 200 OK + JSON{newAccessToken}<br/>Set-Cookie: newRefreshToken (HttpOnly, Secure)
+    else Refresh token invalid
+        VAL-->>C: 401 Unauthorized
+    end
+```
+
+
+## 跨层交互
+下图说明了 AuthService 如何在控制器层、两个仓库实现以及 bcrypt/JWT 工具库之间进行协调：
+
+```mermaid
+flowchart TB
+    subgraph Controller["控制器层"]
+        AC["authController"]
+    end
+
+    subgraph Service["服务层"]
+        AS["AuthService<br/><i>静态方法</i>"]
+    end
+
+    subgraph Repositories["仓库层"]
+        UR["UserRepos<br/><i>PostgreSQL</i>"]
+        SR["repos::Session<br/><i>Redis</i>"]
+    end
+
+    subgraph Utilities["工具库"]
+        BC["bcrypt<br/><i>密码哈希</i>"]
+        JWT["JwtToken<br/><i>令牌创建</i>"]
+    end
+
+    AC -- "signUp/signIn" --> AS
+    AC -- "logout/refresh" --> AS
+    AC -- "changePassword" --> AS
+
+    AS -- "registration<br/>login<br/>changePassword" --> UR
+    AS -- "login<br/>logout<br/>updateAccessToken" --> SR
+    AS -- "login: validatePassword" --> BC
+    AS -- "login: createPair" --> JWT
+
+    UR -.-> PG[("PostgreSQL")]
+    SR -.-> RD[("Redis")]
+```
+
+
+##  Redis 回话存储
+```mermaid
+graph TB
+    subgraph "Session Repository Layer"
+        direction TB
+        SessionClass["Session<br/><i>repos::Session</i><br/>upload · get · remove"]
+    end
+
+    subgraph "Redis Instance"
+        direction TB
+        RedisStore[("tcp://127.0.0.1:6379")]
+    end
+
+    subgraph "Consumers"
+        direction TB
+        LoginFlow["AuthService::login"]
+        LogoutFlow["AuthService::logout"]
+        RefreshFlow["AuthService::updateAccessToken"]
+    end
+
+    LoginFlow -->|"session.upload(userId)"| SessionClass
+    LogoutFlow -->|"session.remove(userId, tokens)"| SessionClass
+    RefreshFlow -->|"remove → upload → get"| SessionClass
+    SessionClass -->|"sw::redis::Redis"| RedisStore
+
+    style SessionClass fill:#2d3748,stroke:#e2e8f0,color:#e2e8f0
+    style RedisStore fill:#c53030,stroke:#e2e8f0,color:#e2e8f0
+```
+
+## 会话生命周
+Auth Service 将所有三个操作编排为连贯的生命周期转换。理解确切的调用顺序对于调试与会话相关的故障至关重要。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as authController
+    participant Service as AuthService
+    participant Session as repos::Session
+    participant Redis as Redis (6379)
+
+    Note over Client,Redis: Login — Session Creation
+    Client->>Controller: POST /auth/signIn
+    Controller->>Service: login(user)
+    Service->>Service: bcrypt::validatePassword()
+    Service->>Service: jwtToken.createPair(userId)
+    Service->>Session: Session(tokenPair)
+    Service->>Session: upload(userId)
+    Session->>Redis: SET {userId}:{accessToken} → JSON
+    Service-->>Controller: UserData{TokenPair, id}
+
+    Note over Client,Redis: Logout — Session Destruction
+    Client->>Controller: POST /auth/logout
+    Controller->>Service: logout(userData)
+    Service->>Session: Session(tokenPair)
+    Service->>Session: remove(userId, tokenPair)
+    Session->>Redis: DEL {userId}:{accessToken}
+
+    Note over Client,Redis: Token Refresh — Session Rotation
+    Client->>Controller: POST /auth/refresh
+    Controller->>Service: updateAccessToken(userData)
+    Service->>Session: Session(oldTokenPair)
+    Service->>Session: remove(userId, oldTokenPair)
+    Session->>Redis: DEL {userId}:{oldAccessToken}
+    Service->>Session: createAccessToken(userId)
+    Service->>Session: upload(newTokenPair)
+    Session->>Redis: SET {userId}:{newAccessToken} → JSON
+    Service-->>Controller: newTokenPair
+```
+
+## JwtToken 类
+JWT 子系统跨越三个架构层
+
+```mermaid
+graph TB
+    subgraph "请求流"
+        A[入站请求] --> B[TokenExtractionMiddleware 提取]
+        B --> C[ValidateTokensMiddleware 验证]
+        C -->|有效| D[控制器处理程序]
+        C -->|无效| E[401 响应]
+    end
+
+    subgraph "JwtToken 工具"
+        F["JwtToken<br/>src/utils/jwt/jwtToken.hpp"]
+        F --> G[createPair 创建令牌对]
+        F --> H[validateToken 验证令牌]
+        G --> I[访问令牌<br/>HS256 · 1800 分钟]
+        G --> J[刷新令牌<br/>HS256 · 30 天]
+    end
+
+    subgraph "持久化"
+        K[会话仓库<br/>Redis]
+    end
+
+    D --> F
+    C --> H
+    C --> K
+    D --> K
+```
+
+##  令牌验证中间件管道
+验证是一个应用于受保护端点的两阶段中间件管道。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant TE as TokenExtractionMiddleware
+    participant VT as ValidateTokensMiddleware
+    participant Redis as Redis
+    participant Ctrl as Controller
+
+    Client->>TE: POST /logout (body + cookies)
+    TE->>TE: 从 JSON body 中提取 accessToken
+    TE->>TE: 从 Cookie 中提取 refreshToken
+    TE->>TE: 将两者存储在请求属性中
+    alt 缺失或格式错误的令牌
+        TE-->>Client: 400 Bad Request
+    end
+    TE->>VT: nextCb(mcb)
+
+    VT->>VT: validateToken(accessToken)
+    alt 访问令牌无效
+        VT->>VT: validateToken(refreshToken)
+        alt 刷新令牌同样无效
+            VT-->>Client: 401 Unauthorized
+        else 刷新令牌有效
+            VT-->>Client: 401 (访问令牌无效)
+        end
+    end
+
+    VT->>VT: 解码 sub 声明 → userId
+    VT->>Redis: GET {userId}:{accessToken}
+    alt 令牌不在 Redis 中
+        VT-->>Client: 401 Unauthorized
+    end
+
+    VT->>VT: 对比存储的令牌与请求中的令牌
+    alt 不匹配
+        VT-->>Client: 401 Unauthorized
+    end
+
+    VT->>Ctrl: nextCb(mcb)
+```
+
+
+
+## 刷新端点管道/getNewAccessToken
+
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant TE as TokenExtractionMiddleware
+    participant VT as ValidateRefreshMiddleware
+    participant AC as authController
+    participant AS as AuthService
+    participant Sess as Session (Redis)
+
+    Client->>TE: POST /getNewAccessToken<br/>{accessToken: "..."}, Cookie: refreshToken=...
+    TE->>TE: Extract accessToken from JSON body
+    TE->>TE: Extract refreshToken from cookies
+    TE->>TE: Store both in request attributes
+    TE->>VT: nextCb()
+    
+    VT->>VT: validateToken(refreshToken)
+    alt refreshToken is valid
+        VT->>VT: Decode refreshToken → userId
+        VT->>Sess: get(userId, tokenPair)
+        Sess-->>VT: stored tokenPair
+        VT->>VT: Compare stored.refreshToken == request.refreshToken
+        alt Match
+            VT->>AC: nextCb()
+        else Mismatch
+            VT-->>Client: 401 "No such access token found"
+        end
+    end
+
+    AC->>AC: Decode refreshToken → userId
+    AC->>AS: updateAccessToken(userData)
+    AS->>Sess: remove(userId, oldTokenPair)
+    AS->>Sess: upload(userId) [new tokenPair]
+    AS->>Sess: get(userId, newTokenPair)
+    Sess-->>AS: new tokenPair
+    AS-->>AC: new TokenPair
+    AC-->>Client: 200 {accessToken: "...", userId: N}<br/>Set-Cookie: refreshToken=...
 ```

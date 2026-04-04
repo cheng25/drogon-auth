@@ -20,6 +20,7 @@ AuthService::UserData AuthService::login(const user &user) {
     try {
         static UserRepos repos;
         const auto userData = repos.getUserAuthData(user.getUsername(), user.getEmail());
+        //传入的明文密码与存储的哈希值进行比较
         if (!bcrypt::validatePassword(user.getHashPassword_(),
                                       userData.password)) {
             throw std::runtime_error("Incorrect password");

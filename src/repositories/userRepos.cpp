@@ -19,7 +19,7 @@ void UserRepos::create_user(const user &user) {
             },
             user.getUsername(), user.getHashPassword_(), user.getEmail()
     );
-    future.get();
+    future.get();/*基于回调的异步 API 转换为同步调用点，同时在底层仍利用异步 I/O。*/
 }
 
 UserRepos::UserAuth UserRepos::getUserAuthData(const std::string &username, const std::string &email) const

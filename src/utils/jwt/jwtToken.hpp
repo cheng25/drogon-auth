@@ -10,15 +10,19 @@ public:
         std::string accessToken;
         std::string refreshToken;
     };
-
+    /** @brief JwtToken constructor
+     * @param secretKey: The secret key used to sign the JWT    令牌创建与验证之间共享的 HMAC-SHA256 签名密钥
+     * @param accessTokenLifetimeMinutes: The lifetime of the access token in minutes 访问令牌过期时间窗口
+     * @param refreshTokenLifetimeDays: The lifetime of the refresh token in days 刷新令牌过期时间窗口
+     */
     explicit JwtToken(const std::string &secretKey = "secretKey",
-             size_t accessTokenLifetimeMinutes = 1800,
-             size_t refreshTokenLifetimeDays = 30)
+             const size_t accessTokenLifetimeMinutes = 1800,
+             const size_t refreshTokenLifetimeDays = 30)
             : secretKey_(secretKey),
               accessTokenLifetime_(std::chrono::minutes(accessTokenLifetimeMinutes)),
               refreshTokenLifetime_(std::chrono::days(refreshTokenLifetimeDays)) {}
 
-    TokenPair createPair(const size_t &userId) const {
+    [[nodiscard]] TokenPair createPair(const size_t &userId) const {
         return createPair(std::to_string(userId));
     }
 

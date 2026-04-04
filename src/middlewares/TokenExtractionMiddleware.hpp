@@ -32,7 +32,14 @@ public:
         std::clog << "log TokenExtractionMiddleware" << std::endl;
 
         try {
-            auto body = req->getJsonObject();
+            /*不是从 "body" 属性中读取。这意味着它无需 ValidateRequestBodyMiddleware 先行运行即可发挥作用，
+             *这是刻意为之——/logout 路由仅使用 TokenExtractionMiddleware，而没有前置的请求体验证器。
+             *这也意味着 /changePassword 路由（其链路为 ValidateRequestBodyMiddleware → ValidatePasswordMiddleware →
+             *TokenExtractionMiddleware → ValidateTokensMiddleware）会对 JSON 请求体进行两次解析：
+             *一次由 ValidateRequestBodyMiddleware 执行（用于属性存储），
+             *另一次由 TokenExtractionMiddleware 执行（用于直接字段访问）
+             */
+            const auto body = req->getJsonObject();
             if (!body) {
                 throw std::runtime_error("Invalid JSON body");
             }

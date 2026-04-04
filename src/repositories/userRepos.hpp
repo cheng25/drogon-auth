@@ -21,6 +21,7 @@ public:
 
     user readUser(Id);
 
+    //修改密码
     void updatePassword(Id id, const std::string &password);
 
     UserAuth getUserAuthData(const std::string &username, const std::string &email) const;
