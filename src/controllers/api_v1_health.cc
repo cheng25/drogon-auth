@@ -5,6 +5,7 @@ using namespace std;
 using namespace api::v1; 
 
 void health::healthCheck(const HttpRequestPtr& req, std::function<void (const HttpResponsePtr &)> &&callback){
+    std::clog << "health::healthCheck" << std::endl;
     try {
         Json::Value res;
         res["success"] = true;

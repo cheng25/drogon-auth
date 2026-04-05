@@ -6,13 +6,13 @@
 	path = libs/jwt-cpp
 	url = https://github.com/Thalhammer/jwt-cpp.git
 
-# [submodule "libs/googletest"]
-# 	path = libs/googletest
-# 	url = https://github.com/google/googletest.git
-#
-# [submodule "libs/hiredis"]
-# 	path = libs/hiredis
-# 	url = https://github.com/redis/hiredis.git
+[submodule "libs/googletest"]
+ 	path = libs/googletest
+ 	url = https://github.com/google/googletest.git
+
+[submodule "libs/hiredis"]
+ 	path = libs/hiredis
+ 	url = https://github.com/redis/hiredis.git
 
 [submodule "libs/Bcrypt.cpp"]
 	path = libs/Bcrypt.cpp
